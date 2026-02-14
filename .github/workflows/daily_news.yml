@@ -10,6 +10,13 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
+
+# 避免同时部署冲突
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
 
 jobs:
   fetch-news:
@@ -38,6 +45,9 @@ jobs:
       - name: Run news search
         run: python main.py
 
+      - name: Generate index page for GitHub Pages
+        run: python scripts/generate_index.py
+
       - name: Upload reports as artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -58,3 +68,15 @@ jobs:
             git commit -m "Daily news report $(date -u +%Y-%m-%d)"
             git push
           fi
+
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload to GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: data/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
