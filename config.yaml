@@ -1,0 +1,37 @@
+# Italian Company News Search Configuration
+
+# Schedule: when to run daily news search (24h format)
+schedule_time: "08:00"
+
+# Maximum number of articles per company per run
+max_articles_per_company: 20
+
+# Number of days to keep articles in the database
+retention_days: 90
+
+# News sources configuration
+sources:
+  google_news:
+    enabled: true
+    base_url: "https://news.google.com/rss/search"
+    language: "it"
+    country: "IT"
+
+  ansa:
+    enabled: true
+    rss_url: "https://www.ansa.it/sito/notizie/economia/economia_rss.xml"
+
+  sole24ore:
+    enabled: true
+    rss_url: "https://www.ilsole24ore.com/rss/economia.xml"
+
+  reuters_it:
+    enabled: true
+    rss_url: "https://it.reuters.com/rssFeed/businessNews"
+
+# Output settings
+output:
+  console: true
+  html: true
+  json: true
+  output_dir: "data"
