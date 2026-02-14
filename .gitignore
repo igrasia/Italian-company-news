@@ -20,10 +20,8 @@ env/
 *.swp
 *.swo
 
-# Data
+# Database (don't commit, too large)
 data/*.db
-data/*.json
-data/*.html
 
 # Environment
 .env
