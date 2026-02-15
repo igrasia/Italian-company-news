@@ -9,7 +9,7 @@ import sys
 import schedule
 
 from src.companies import get_all_companies
-from src.news_fetcher import fetch_all_news
+from src.news_fetcher import fetch_all_news, fetch_macro_news
 from src.report import generate_reports
 from src.storage import cleanup_old_articles, init_db, store_articles
 
@@ -26,19 +26,23 @@ def run_daily_job(config):
     conn = init_db(config)
 
     try:
-        # Fetch news
+        # Fetch company news
         articles_by_company = fetch_all_news(companies, config)
 
-        if not articles_by_company:
+        # Fetch macro economy & society news
+        logger.info("Fetching Italian economy & society news...")
+        macro_articles = fetch_macro_news(config)
+
+        if not articles_by_company and not macro_articles:
             logger.warning("No articles found in this run.")
             return
 
         # Store in database
-        new_count = store_articles(conn, articles_by_company)
+        new_count = store_articles(conn, articles_by_company) if articles_by_company else 0
         logger.info("Total new articles stored: %d", new_count)
 
         # Generate reports
-        generate_reports(articles_by_company, config)
+        generate_reports(articles_by_company or {}, config, macro_articles)
 
         # Cleanup old articles
         retention = config.get("retention_days", 90)

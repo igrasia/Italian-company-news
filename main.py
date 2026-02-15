@@ -21,7 +21,7 @@ import sys
 import yaml
 
 from src.companies import get_all_companies, get_companies_by_sector, get_sectors
-from src.news_fetcher import fetch_all_news
+from src.news_fetcher import fetch_all_news, fetch_macro_news
 from src.report import generate_reports
 from src.scheduler import run_daily_job, start_scheduler
 from src.storage import get_stats, get_today_articles, init_db, store_articles
@@ -141,9 +141,11 @@ def _run_filtered(companies, config):
     conn = init_db(config)
     try:
         articles_by_company = fetch_all_news(companies, config)
-        if articles_by_company:
-            store_articles(conn, articles_by_company)
-            generate_reports(articles_by_company, config)
+        macro_articles = fetch_macro_news(config)
+        if articles_by_company or macro_articles:
+            if articles_by_company:
+                store_articles(conn, articles_by_company)
+            generate_reports(articles_by_company or {}, config, macro_articles)
         else:
             print("No articles found.")
     finally:

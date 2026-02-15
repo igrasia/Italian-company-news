@@ -166,3 +166,97 @@ def fetch_all_news(companies, config):
             time.sleep(0.5)
 
     return results
+
+
+# ---------------------------------------------------------------------------
+# Italian macro economy & society news
+# ---------------------------------------------------------------------------
+
+MACRO_KEYWORDS = [
+    "economia italiana",
+    "PIL Italia",
+    "inflazione Italia",
+    "BCE tasso",
+    "borsa italiana",
+    "FTSE MIB",
+    "spread BTP Bund",
+    "debito pubblico Italia",
+    "occupazione lavoro Italia",
+    "governo italiano economia",
+    "politica fiscale Italia",
+    "export Made in Italy",
+    "società italiana",
+]
+
+
+def fetch_macro_news(config):
+    """
+    Fetch general Italian economy & society news (not company-specific).
+
+    Returns a list of article dicts.
+    """
+    max_articles = config.get("max_macro_articles", 30)
+    source_cfg = config.get("sources", {}).get("google_news", {})
+    if not source_cfg.get("enabled", True):
+        return []
+
+    base_url = source_cfg.get("base_url", "https://news.google.com/rss/search")
+    lang = source_cfg.get("language", "it")
+    country = source_cfg.get("country", "IT")
+
+    all_articles = []
+    for keyword in MACRO_KEYWORDS:
+        query = urllib.parse.quote(keyword)
+        url = f"{base_url}?q={query}&hl={lang}&gl={country}&ceid={country}:{lang}"
+        try:
+            feed = feedparser.parse(url, agent=USER_AGENT)
+            for entry in feed.entries:
+                all_articles.append({
+                    "title": entry.get("title", ""),
+                    "link": entry.get("link", ""),
+                    "published": _parse_date(entry),
+                    "summary": _clean_html(entry.get("summary", "")),
+                    "source": "Google News",
+                })
+        except Exception as e:
+            logger.warning("Error fetching macro news for '%s': %s", keyword, e)
+        time.sleep(0.5)
+
+    # Also pull from Italian RSS feeds directly (economy sections)
+    sources = config.get("sources", {})
+    feed_sources = {
+        "ansa": ("ANSA", "rss_url"),
+        "sole24ore": ("Il Sole 24 Ore", "rss_url"),
+    }
+    for key, (name, url_field) in feed_sources.items():
+        src = sources.get(key, {})
+        if not src.get("enabled", True):
+            continue
+        feed_url = src.get(url_field)
+        if not feed_url:
+            continue
+        try:
+            feed = feedparser.parse(feed_url, agent=USER_AGENT)
+            for entry in feed.entries:
+                all_articles.append({
+                    "title": entry.get("title", ""),
+                    "link": entry.get("link", ""),
+                    "published": _parse_date(entry),
+                    "summary": _clean_html(entry.get("summary", "")),
+                    "source": name,
+                })
+        except Exception as e:
+            logger.warning("Error fetching macro RSS from %s: %s", name, e)
+
+    # Deduplicate by link
+    seen_links = set()
+    unique = []
+    for article in all_articles:
+        link = article["link"]
+        if link and link not in seen_links:
+            seen_links.add(link)
+            unique.append(article)
+
+    unique.sort(key=lambda a: a["published"], reverse=True)
+    logger.info("Fetched %d macro economy/society articles", len(unique[:max_articles]))
+    return unique[:max_articles]
