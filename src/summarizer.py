@@ -1,15 +1,20 @@
 """
-Summarizer module - generates a brief English digest for each company's daily news,
+Summarizer module - generates English digests for each company's daily news,
 and for Italian macro economy/society news.
 
-Uses extractive summarization: picks key information from article titles
-and summaries to create a concise overview paragraph.
-Translates Italian headlines to English using Google Translate.
+When ANTHROPIC_API_KEY is set, uses Claude AI to produce narrative English
+summaries. Otherwise, falls back to extractive summarization with optional
+Google Translate for headline translation.
 """
 
+import logging
 import re
 
+from src.ai_summarizer import is_available as ai_available
+from src.ai_summarizer import summarize_company_ai, summarize_macro_ai
 from src.translator import translate_batch
+
+logger = logging.getLogger(__name__)
 
 
 def _deduplicate_phrases(titles):
@@ -39,22 +44,37 @@ def summarize_company(company_name, articles):
     """
     Generate a short English digest for one company's articles.
 
+    Uses Claude AI for narrative summary when available, otherwise
+    falls back to extractive summarization with translated headlines.
+
     Returns a dict with:
-      - digest: str, a brief narrative paragraph
+      - digest: str, a brief narrative paragraph or headline list
       - topic_count: int, number of distinct topics
       - sources: list[str], sources that covered this company
+      - ai_generated: bool, whether AI was used
     """
     if not articles:
-        return {"digest": "", "topic_count": 0, "sources": []}
+        return {"digest": "", "topic_count": 0, "sources": [], "ai_generated": False}
 
     titles = [a["title"] for a in articles if a.get("title")]
     sources = list({a.get("source", "Unknown") for a in articles})
-
     unique_titles = list(_deduplicate_phrases(titles))
 
     n = len(articles)
     src_text = ", ".join(sorted(sources))
 
+    # Try AI summarization first
+    if ai_available():
+        ai_digest = summarize_company_ai(company_name, articles)
+        if ai_digest:
+            return {
+                "digest": ai_digest,
+                "topic_count": len(unique_titles),
+                "sources": sorted(sources),
+                "ai_generated": True,
+            }
+
+    # Fallback: extractive summarization with translated headlines
     if n == 1:
         intro = f"{company_name} — 1 article from {src_text}."
     else:
@@ -81,6 +101,7 @@ def summarize_company(company_name, articles):
         "digest": digest,
         "topic_count": len(unique_titles),
         "sources": sorted(sources),
+        "ai_generated": False,
     }
 
 
@@ -101,23 +122,39 @@ def summarize_macro(macro_articles):
     """
     Generate an English digest for Italian macro economy & society news.
 
+    Uses Claude AI for narrative briefing when available, otherwise
+    falls back to extractive summarization with translated headlines.
+
     Returns a dict with:
       - digest: str, narrative overview
       - topic_count: int
       - sources: list[str]
-      - articles: list[dict], the original articles for reference
+      - ai_generated: bool
     """
     if not macro_articles:
         return {
             "digest": "No Italian economy & society news found today.",
             "topic_count": 0,
             "sources": [],
+            "ai_generated": False,
         }
 
     titles = [a["title"] for a in macro_articles if a.get("title")]
     sources = list({a.get("source", "Unknown") for a in macro_articles})
     unique_titles = list(_deduplicate_phrases(titles))
 
+    # Try AI summarization first
+    if ai_available():
+        ai_digest = summarize_macro_ai(macro_articles)
+        if ai_digest:
+            return {
+                "digest": ai_digest,
+                "topic_count": len(unique_titles),
+                "sources": sorted(sources),
+                "ai_generated": True,
+            }
+
+    # Fallback: extractive summarization
     n = len(macro_articles)
     src_text = ", ".join(sorted(sources))
     intro = f"Today's Italian economy & society highlights — {n} articles from {src_text}."
@@ -142,4 +179,5 @@ def summarize_macro(macro_articles):
         "digest": digest,
         "topic_count": len(unique_titles),
         "sources": sorted(sources),
+        "ai_generated": False,
     }

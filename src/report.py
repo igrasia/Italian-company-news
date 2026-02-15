@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 
 from jinja2 import Template
 
+from src.ai_summarizer import is_available as ai_available
+from src.ai_summarizer import translate_article_ai
 from src.summarizer import summarize_all, summarize_macro
 from src.translator import translate_text
 
@@ -119,6 +121,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             margin-bottom: 6px;
         }
         .digest-company h3 .toggle { font-size: 0.8em; color: #aaa; margin-left: 6px; }
+        .ai-badge {
+            display: inline-block;
+            background: #e8f5e9;
+            color: #2e7d32;
+            font-size: 0.7em;
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin-left: 8px;
+            vertical-align: middle;
+            font-weight: 600;
+        }
         .digest-meta {
             font-size: 0.82em;
             color: #999;
@@ -208,7 +221,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         <!-- Macro Economy & Society -->
         <div class="macro-section">
-            <div class="macro-title">Italian Economy &amp; Society — Daily Briefing</div>
+            <div class="macro-title">Italian Economy &amp; Society — Daily Briefing{% if macro_summary.ai_generated %} <span class="ai-badge">AI Summary</span>{% endif %}</div>
             <div class="macro-body">
                 <div class="macro-digest">{{ macro_summary.digest }}</div>
                 {% if macro_articles %}
@@ -233,7 +246,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div class="digest-title">Company News Digest</div>
             {% for company, summary in summaries.items() %}
             <div class="digest-company">
-                <h3>{{ company }} <span class="toggle">[{{ summary.topic_count }} topics]</span></h3>
+                <h3>{{ company }} <span class="toggle">[{{ summary.topic_count }} topics]</span>{% if summary.ai_generated %} <span class="ai-badge">AI Summary</span>{% endif %}</h3>
                 <div class="digest-meta">Sources: {{ summary.sources | join(', ') }}</div>
                 <div class="digest-text">{{ summary.digest }}</div>
             </div>
@@ -279,6 +292,15 @@ def _format_pub(pub):
     return pub
 
 
+def _translate_article(title, summary=None):
+    """Translate article title and summary to English. Tries AI, then deep-translator."""
+    if ai_available():
+        result = translate_article_ai(title, summary)
+        if result:
+            return result.get("title", title), result.get("summary", summary)
+    return translate_text(title), translate_text(summary) if summary else summary
+
+
 def print_console_report(articles_by_company, macro_articles=None):
     """Print a formatted report to the console."""
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -309,11 +331,12 @@ def print_console_report(articles_by_company, macro_articles=None):
         print(f"\n--- {company} ({len(articles)} articles) ---")
         for article in articles:
             pub = _format_pub(article["published"])
-            title_en = translate_text(article["title"])
+            title_en, summary_en = _translate_article(
+                article["title"], article.get("summary")
+            )
             print(f"  [{article['source']}] {title_en}")
             print(f"    {pub} | {article['link']}")
-            if article.get("summary"):
-                summary_en = translate_text(article["summary"])
+            if summary_en:
                 summary_en = summary_en[:150]
                 if len(summary_en) > 150:
                     summary_en += "..."
@@ -341,9 +364,9 @@ def generate_html_report(articles_by_company, output_dir, macro_articles=None):
     for article in (macro_articles or []):
         a = dict(article)
         a["published"] = _format_pub(a["published"])
-        a["title"] = translate_text(a.get("title", ""))
-        if a.get("summary"):
-            a["summary"] = translate_text(a["summary"])
+        a["title"], a["summary"] = _translate_article(
+            a.get("title", ""), a.get("summary")
+        )
         macro_template.append(a)
         sources.add(a.get("source", "Unknown"))
 
@@ -355,9 +378,9 @@ def generate_html_report(articles_by_company, output_dir, macro_articles=None):
         for article in articles:
             a = dict(article)
             a["published"] = _format_pub(a["published"])
-            a["title"] = translate_text(a.get("title", ""))
-            if a.get("summary"):
-                a["summary"] = translate_text(a["summary"])
+            a["title"], a["summary"] = _translate_article(
+                a.get("title", ""), a.get("summary")
+            )
             template_data[company].append(a)
 
     template = Template(HTML_TEMPLATE)
@@ -393,9 +416,12 @@ def generate_json_report(articles_by_company, output_dir, macro_articles=None):
         a = dict(article)
         if hasattr(a["published"], "strftime"):
             a["published"] = a["published"].isoformat()
-        a["title_en"] = translate_text(a.get("title", ""))
-        if a.get("summary"):
-            a["summary_en"] = translate_text(a["summary"])
+        title_en, summary_en = _translate_article(
+            a.get("title", ""), a.get("summary")
+        )
+        a["title_en"] = title_en
+        if summary_en:
+            a["summary_en"] = summary_en
         macro_json.append(a)
 
     output = {
@@ -418,9 +444,12 @@ def generate_json_report(articles_by_company, output_dir, macro_articles=None):
             a = dict(article)
             if hasattr(a["published"], "strftime"):
                 a["published"] = a["published"].isoformat()
-            a["title_en"] = translate_text(a.get("title", ""))
-            if a.get("summary"):
-                a["summary_en"] = translate_text(a["summary"])
+            title_en, summary_en = _translate_article(
+                a.get("title", ""), a.get("summary")
+            )
+            a["title_en"] = title_en
+            if summary_en:
+                a["summary_en"] = summary_en
             output["companies"][company].append(a)
 
     os.makedirs(output_dir, exist_ok=True)

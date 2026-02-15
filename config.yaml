@@ -37,6 +37,13 @@ sources:
     country: "it"
     page_size: 20
 
+# AI-powered summarization (requires ANTHROPIC_API_KEY environment variable)
+# When enabled, generates narrative English summaries using Claude API.
+# When disabled or API key not set, falls back to extractive summarization.
+ai:
+  enabled: true
+  model: "claude-haiku-4-5-20251001"
+
 # Output settings
 output:
   console: true
