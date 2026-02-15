@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 
 from jinja2 import Template
 
+from src.summarizer import summarize_all
+
 logger = logging.getLogger(__name__)
 
 HTML_TEMPLATE = """<!DOCTYPE html>
@@ -53,6 +55,45 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
         .stat-card h3 { color: #009246; font-size: 2em; }
         .stat-card p { color: #666; }
+
+        /* Daily digest section */
+        .digest-section {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+            overflow: hidden;
+        }
+        .digest-title {
+            background: #1a1a1a;
+            color: white;
+            padding: 15px 20px;
+            font-size: 1.3em;
+        }
+        .digest-company {
+            padding: 18px 20px;
+            border-bottom: 1px solid #eee;
+        }
+        .digest-company:last-child { border-bottom: none; }
+        .digest-company h3 {
+            color: #009246;
+            font-size: 1.1em;
+            margin-bottom: 6px;
+            cursor: pointer;
+        }
+        .digest-company h3 .toggle { font-size: 0.8em; color: #aaa; margin-left: 6px; }
+        .digest-meta {
+            font-size: 0.82em;
+            color: #999;
+            margin-bottom: 8px;
+        }
+        .digest-text {
+            color: #444;
+            font-size: 0.95em;
+            white-space: pre-line;
+        }
+
+        /* Collapsible article details */
         .company-section {
             background: white;
             border-radius: 8px;
@@ -68,6 +109,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             display: flex;
             justify-content: space-between;
             align-items: center;
+            cursor: pointer;
         }
         .company-header .count {
             background: rgba(255,255,255,0.2);
@@ -123,12 +165,26 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
         </div>
 
+        <!-- Daily Digest -->
+        <div class="digest-section">
+            <div class="digest-title">Riepilogo del giorno</div>
+            {% for company, summary in summaries.items() %}
+            <div class="digest-company">
+                <h3>{{ company }} <span class="toggle">[{{ summary.topic_count }} topics]</span></h3>
+                <div class="digest-meta">Fonti: {{ summary.sources | join(', ') }}</div>
+                <div class="digest-text">{{ summary.digest }}</div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Full Article List per Company -->
         {% for company, articles in articles_by_company.items() %}
         <div class="company-section">
-            <div class="company-header">
+            <div class="company-header" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
                 {{ company }}
-                <span class="count">{{ articles|length }} articles</span>
+                <span class="count">{{ articles|length }} articles — click to expand</span>
             </div>
+            <div style="display:none">
             {% for article in articles %}
             <div class="article">
                 <h3><a href="{{ article.link }}" target="_blank">{{ article.title }}</a></h3>
@@ -141,6 +197,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 {% endif %}
             </div>
             {% endfor %}
+            </div>
         </div>
         {% endfor %}
 
@@ -156,12 +213,21 @@ def print_console_report(articles_by_company):
     """Print a formatted report to the console."""
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     total = sum(len(a) for a in articles_by_company.values())
+    summaries = summarize_all(articles_by_company)
 
     print("\n" + "=" * 70)
     print(f"  ITALIAN COMPANY NEWS REPORT - {date_str}")
     print(f"  {len(articles_by_company)} companies | {total} articles")
     print("=" * 70)
 
+    # Print digest first
+    print("\n  RIEPILOGO DEL GIORNO")
+    print("-" * 70)
+    for company, summary in summaries.items():
+        print(f"\n  {summary['digest']}")
+    print("\n" + "-" * 70)
+
+    # Then full article listing
     for company, articles in sorted(articles_by_company.items()):
         print(f"\n--- {company} ({len(articles)} articles) ---")
         for article in articles:
@@ -190,9 +256,12 @@ def generate_html_report(articles_by_company, output_dir):
         for a in articles:
             sources.add(a.get("source", "Unknown"))
 
+    summaries = summarize_all(articles_by_company)
+
     # Convert datetime objects to strings for the template
     template_data = {}
-    for company, articles in articles_by_company.items():
+    for company in sorted(articles_by_company.keys()):
+        articles = articles_by_company[company]
         template_data[company] = []
         for article in articles:
             a = dict(article)
@@ -206,6 +275,7 @@ def generate_html_report(articles_by_company, output_dir):
         total_articles=total_articles,
         total_companies=len(articles_by_company),
         total_sources=len(sources),
+        summaries=summaries,
         articles_by_company=template_data,
     )
 
@@ -221,17 +291,19 @@ def generate_html_report(articles_by_company, output_dir):
 def generate_json_report(articles_by_company, output_dir):
     """Generate a JSON report."""
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    summaries = summarize_all(articles_by_company)
 
-    # Convert datetime objects to strings
     output = {
         "date": date_str,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "total_articles": sum(len(a) for a in articles_by_company.values()),
         "total_companies": len(articles_by_company),
+        "summaries": summaries,
         "companies": {},
     }
 
-    for company, articles in articles_by_company.items():
+    for company in sorted(articles_by_company.keys()):
+        articles = articles_by_company[company]
         output["companies"][company] = []
         for article in articles:
             a = dict(article)
