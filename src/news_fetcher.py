@@ -121,6 +121,126 @@ def fetch_italian_sources(company_name, keywords, config):
     return articles
 
 
+def _parse_newsapi_date(date_str):
+    """Parse an ISO-8601 date string from NewsAPI."""
+    if not date_str:
+        return datetime.now(timezone.utc)
+    try:
+        # NewsAPI returns "2025-01-15T12:00:00Z" format
+        dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        return dt
+    except Exception:
+        return datetime.now(timezone.utc)
+
+
+def fetch_newsapi(company_name, keywords, config):
+    """Fetch company news from NewsAPI /v2/everything endpoint."""
+    source_cfg = config.get("sources", {}).get("newsapi", {})
+    if not source_cfg.get("enabled", False):
+        return []
+
+    api_key = source_cfg.get("api_key", "")
+    if not api_key:
+        return []
+
+    base_url = source_cfg.get("base_url", "https://newsapi.org/v2")
+    language = source_cfg.get("language", "it")
+    page_size = source_cfg.get("page_size", 20)
+
+    articles = []
+    query = " OR ".join(keywords)
+    url = f"{base_url}/everything"
+    params = {
+        "q": query,
+        "language": language,
+        "pageSize": page_size,
+        "sortBy": "publishedAt",
+        "apiKey": api_key,
+    }
+
+    try:
+        resp = requests.get(url, params=params, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+        resp.raise_for_status()
+        data = resp.json()
+        for item in data.get("articles", []):
+            articles.append({
+                "title": item.get("title", ""),
+                "link": item.get("url", ""),
+                "published": _parse_newsapi_date(item.get("publishedAt")),
+                "summary": item.get("description", "") or "",
+                "source": item.get("source", {}).get("name", "NewsAPI"),
+                "company": company_name,
+            })
+    except Exception as e:
+        logger.warning("Error fetching NewsAPI for %s: %s", company_name, e)
+
+    return articles
+
+
+def fetch_newsapi_macro(config, query):
+    """Fetch macro news from NewsAPI /v2/top-headlines for Italy."""
+    source_cfg = config.get("sources", {}).get("newsapi", {})
+    if not source_cfg.get("enabled", False):
+        return []
+
+    api_key = source_cfg.get("api_key", "")
+    if not api_key:
+        return []
+
+    base_url = source_cfg.get("base_url", "https://newsapi.org/v2")
+    country = source_cfg.get("country", "it")
+    page_size = source_cfg.get("page_size", 20)
+
+    articles = []
+    url = f"{base_url}/top-headlines"
+    params = {
+        "country": country,
+        "category": "business",
+        "pageSize": page_size,
+        "apiKey": api_key,
+    }
+
+    try:
+        resp = requests.get(url, params=params, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+        resp.raise_for_status()
+        data = resp.json()
+        for item in data.get("articles", []):
+            articles.append({
+                "title": item.get("title", ""),
+                "link": item.get("url", ""),
+                "published": _parse_newsapi_date(item.get("publishedAt")),
+                "summary": item.get("description", "") or "",
+                "source": item.get("source", {}).get("name", "NewsAPI"),
+            })
+    except Exception as e:
+        logger.warning("Error fetching NewsAPI top-headlines: %s", e)
+
+    # Also fetch general/science/health for society coverage
+    for category in ("general", "science", "health"):
+        params_cat = {
+            "country": country,
+            "category": category,
+            "pageSize": 10,
+            "apiKey": api_key,
+        }
+        try:
+            resp = requests.get(url, params=params_cat, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+            resp.raise_for_status()
+            data = resp.json()
+            for item in data.get("articles", []):
+                articles.append({
+                    "title": item.get("title", ""),
+                    "link": item.get("url", ""),
+                    "published": _parse_newsapi_date(item.get("publishedAt")),
+                    "summary": item.get("description", "") or "",
+                    "source": item.get("source", {}).get("name", "NewsAPI"),
+                })
+        except Exception as e:
+            logger.warning("Error fetching NewsAPI %s headlines: %s", category, e)
+
+    return articles
+
+
 def fetch_news_for_company(company_name, keywords, config):
     """Fetch news for a single company from all enabled sources."""
     max_articles = config.get("max_articles_per_company", 20)
@@ -132,6 +252,9 @@ def fetch_news_for_company(company_name, keywords, config):
 
     # Italian RSS sources (filtered by keywords)
     all_articles.extend(fetch_italian_sources(company_name, keywords, config))
+
+    # NewsAPI (targeted per company)
+    all_articles.extend(fetch_newsapi(company_name, keywords, config))
 
     # Deduplicate by link
     seen_links = set()
@@ -247,6 +370,9 @@ def fetch_macro_news(config):
                 })
         except Exception as e:
             logger.warning("Error fetching macro RSS from %s: %s", name, e)
+
+    # NewsAPI top headlines for Italy (business + general + society)
+    all_articles.extend(fetch_newsapi_macro(config, "economia Italia"))
 
     # Deduplicate by link
     seen_links = set()

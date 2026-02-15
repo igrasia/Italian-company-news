@@ -29,6 +29,14 @@ sources:
     enabled: true
     rss_url: "https://it.reuters.com/rssFeed/businessNews"
 
+  newsapi:
+    enabled: true
+    api_key: "5df32dff1e1e4ed69d137ae2e7916626"
+    base_url: "https://newsapi.org/v2"
+    language: "it"
+    country: "it"
+    page_size: 20
+
 # Output settings
 output:
   console: true
