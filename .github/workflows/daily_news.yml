@@ -1,11 +1,11 @@
 name: Daily Italian Company News Search
 
 on:
-  # 每天北京时间早上 8:00 运行（UTC 00:00）
+  # Run daily at 00:00 UTC (08:00 Beijing time)
   schedule:
     - cron: '0 0 * * *'
 
-  # 也可以手动触发
+  # Allow manual trigger
   workflow_dispatch:
 
 permissions:
@@ -13,7 +13,7 @@ permissions:
   pages: write
   id-token: write
 
-# 避免同时部署冲突
+# Avoid concurrent deployment conflicts
 concurrency:
   group: "pages"
   cancel-in-progress: false
