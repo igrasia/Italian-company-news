@@ -66,6 +66,7 @@ jobs:
             echo "No new reports to commit"
           else
             git commit -m "Daily news report $(date -u +%Y-%m-%d)"
+            git pull --rebase origin ${{ github.ref_name }}
             git push
           fi
 
