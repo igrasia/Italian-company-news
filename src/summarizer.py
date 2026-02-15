@@ -4,9 +4,12 @@ and for Italian macro economy/society news.
 
 Uses extractive summarization: picks key information from article titles
 and summaries to create a concise overview paragraph.
+Translates Italian headlines to English using Google Translate.
 """
 
 import re
+
+from src.translator import translate_batch
 
 
 def _deduplicate_phrases(titles):
@@ -57,12 +60,15 @@ def summarize_company(company_name, articles):
     else:
         intro = f"{company_name} — {n} articles from {src_text}."
 
-    # Up to 5 representative headlines
+    # Up to 5 representative headlines, translated to English
     topic_lines = []
     for title in unique_titles[:5]:
         clean = _clean_title(title)
         if clean:
             topic_lines.append(clean)
+
+    # Translate Italian headlines to English
+    topic_lines = translate_batch(topic_lines)
 
     digest = intro
     if topic_lines:
@@ -121,6 +127,9 @@ def summarize_macro(macro_articles):
         clean = _clean_title(title)
         if clean:
             topic_lines.append(clean)
+
+    # Translate Italian headlines to English
+    topic_lines = translate_batch(topic_lines)
 
     digest = intro
     if topic_lines:

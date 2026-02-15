@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from jinja2 import Template
 
 from src.summarizer import summarize_all, summarize_macro
+from src.translator import translate_text
 
 logger = logging.getLogger(__name__)
 
@@ -303,18 +304,20 @@ def print_console_report(articles_by_company, macro_articles=None):
         print(f"\n  {summary['digest']}")
     print("\n" + "-" * 70)
 
-    # Full article listing
+    # Full article listing (translated to English)
     for company, articles in sorted(articles_by_company.items()):
         print(f"\n--- {company} ({len(articles)} articles) ---")
         for article in articles:
             pub = _format_pub(article["published"])
-            print(f"  [{article['source']}] {article['title']}")
+            title_en = translate_text(article["title"])
+            print(f"  [{article['source']}] {title_en}")
             print(f"    {pub} | {article['link']}")
             if article.get("summary"):
-                summary = article["summary"][:150]
-                if len(article["summary"]) > 150:
-                    summary += "..."
-                print(f"    {summary}")
+                summary_en = translate_text(article["summary"])
+                summary_en = summary_en[:150]
+                if len(summary_en) > 150:
+                    summary_en += "..."
+                print(f"    {summary_en}")
             print()
 
     print("=" * 70)
@@ -333,15 +336,18 @@ def generate_html_report(articles_by_company, output_dir, macro_articles=None):
     summaries = summarize_all(articles_by_company)
     macro_summary = summarize_macro(macro_articles or [])
 
-    # Prepare macro articles for template
+    # Prepare macro articles for template (translate titles/summaries to English)
     macro_template = []
     for article in (macro_articles or []):
         a = dict(article)
         a["published"] = _format_pub(a["published"])
+        a["title"] = translate_text(a.get("title", ""))
+        if a.get("summary"):
+            a["summary"] = translate_text(a["summary"])
         macro_template.append(a)
         sources.add(a.get("source", "Unknown"))
 
-    # Convert datetime objects to strings for company articles
+    # Convert datetime objects to strings and translate for company articles
     template_data = {}
     for company in sorted(articles_by_company.keys()):
         articles = articles_by_company[company]
@@ -349,6 +355,9 @@ def generate_html_report(articles_by_company, output_dir, macro_articles=None):
         for article in articles:
             a = dict(article)
             a["published"] = _format_pub(a["published"])
+            a["title"] = translate_text(a.get("title", ""))
+            if a.get("summary"):
+                a["summary"] = translate_text(a["summary"])
             template_data[company].append(a)
 
     template = Template(HTML_TEMPLATE)
@@ -378,12 +387,15 @@ def generate_json_report(articles_by_company, output_dir, macro_articles=None):
     summaries = summarize_all(articles_by_company)
     macro_summary = summarize_macro(macro_articles or [])
 
-    # Prepare macro articles for JSON
+    # Prepare macro articles for JSON (translate to English)
     macro_json = []
     for article in (macro_articles or []):
         a = dict(article)
         if hasattr(a["published"], "strftime"):
             a["published"] = a["published"].isoformat()
+        a["title_en"] = translate_text(a.get("title", ""))
+        if a.get("summary"):
+            a["summary_en"] = translate_text(a["summary"])
         macro_json.append(a)
 
     output = {
@@ -406,6 +418,9 @@ def generate_json_report(articles_by_company, output_dir, macro_articles=None):
             a = dict(article)
             if hasattr(a["published"], "strftime"):
                 a["published"] = a["published"].isoformat()
+            a["title_en"] = translate_text(a.get("title", ""))
+            if a.get("summary"):
+                a["summary_en"] = translate_text(a["summary"])
             output["companies"][company].append(a)
 
     os.makedirs(output_dir, exist_ok=True)
